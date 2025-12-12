@@ -154,6 +154,7 @@ The project is also configured for Netlify deployment via `netlify.toml`.
 ## Sources
 
 **Ecology Section:**
+Several images on the website have been sourced from:
 Natural History of the French Village Conservation Woodland. A Report to the French Village Conservation Woodland Committee by David Patriquin, Jess Lewis, Livy Fraser, Liam Holwell, Rohan Kariyawansa. Nov. 2021
 
 ## License
