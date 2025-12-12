@@ -158,4 +158,5 @@ Natural History of the French Village Conservation Woodland. A Report to the Fre
 
 ## License
 
-Private project - All rights reserved
+Public
+Created for French Village conservation site effor by Abhishek , Darsh and Manar (Saint Mary's University)
