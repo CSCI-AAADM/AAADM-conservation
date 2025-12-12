@@ -36,7 +36,7 @@ jobs:
           app_location: "."        # Root of repository
           api_location: ""          # No backend API
           output_location: "dist"   # Built files are in dist folder
-          skip_app_build: false      
+          skip_app_build: true    
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
