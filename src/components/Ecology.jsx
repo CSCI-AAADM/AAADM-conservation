@@ -1,22 +1,48 @@
-// Purpose: Ecology page component to display categorized species (flora, fauna, fungi) with imagery.
+/**
+ * ================================================================================
+ * File: Ecology.jsx
+ * Author: ADM (Abhishek Darsh Manar) 2025 Fall - Software Engineering (CSCI-3428-1)
+ * Description: Ecology page displaying categorized species (flora, fauna, fungi)
+ * with dynamic image loading, filtering, and modal detail views. Includes Azure
+ * text-to-speech for accessibility.
+ * ================================================================================
+ */
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { IoClose, IoWarningOutline } from "react-icons/io5";
 import ecologyData from '../data/ecologydata.json';
 import Footer from "./Footer";
 import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
 
+// ============================================================================
+// Image Loading & Processing
+// ============================================================================
+
+// Vite glob import: eagerly load all ecology images at build time
+// This ensures all images are bundled and available immediately
 const imageModules = import.meta.glob('../assets/ecologyimages/*', {
   eager: true,
   import: 'default',
 });
 
+/**
+ * Normalize species names to match image filenames
+ * Removes special characters and converts to lowercase for consistent matching
+ * @param {string} value - Species name to normalize
+ * @returns {string} Normalized key
+ */
 const normalizeKey = (value = '') =>
   value
     .toLowerCase()
     .replace(/[()]/g, '')
     .replace(/[^a-z0-9]/g, '');
 
+/**
+ * Build image lookup map from imported modules
+ * Handles both singular and plural forms for flexible matching
+ * Example: "birch" and "birches" both map to same image
+ */
 const speciesImages = Object.entries(imageModules).reduce((acc, [path, module]) => {
   const fileName = path.split('/').pop() || '';
   const baseName = fileName.replace(/\.[^/.]+$/, '');
@@ -36,6 +62,7 @@ const speciesImages = Object.entries(imageModules).reduce((acc, [path, module]) 
   return acc;
 }, {});
 
+// Manual aliases for species with non-standard naming conventions
 const aliasMap = {
   yellowcoastalbirch: 'birch',
   pinecherry: 'pincherry',
@@ -48,9 +75,19 @@ Object.entries(aliasMap).forEach(([alias, canonical]) => {
   }
 });
 
+/**
+ * Format category key to display label (capitalize first letter)
+ * @param {string} key - Category key (e.g., "flora", "fauna")
+ * @returns {string} Formatted label (e.g., "Flora", "Fauna")
+ */
 const formatCategoryLabel = (key = '') =>
   key.charAt(0).toUpperCase() + key.slice(1);
 
+/**
+ * Build flat list of all species from categorized data
+ * Creates entries with normalized IDs for React key prop
+ * @returns {Array<Object>} Array of species objects with metadata
+ */
 const buildSpeciesList = () => {
   const entries = [];
 
@@ -68,35 +105,67 @@ const buildSpeciesList = () => {
   return entries;
 };
 
+/**
+ * Get image module for a species by common name
+ * Uses normalized key matching to find corresponding image
+ * @param {string} commonName - Common name of species
+ * @returns {Object|null} Image module or null if not found
+ */
 const getSpeciesImage = (commonName) => {
   if (!commonName) return null;
   const normalized = normalizeKey(commonName);
   return speciesImages[normalized] || null;
 };
 
+// ============================================================================
+// Ecology Component
+// ============================================================================
+
+/**
+ * Ecology Component - Displays species catalog with filtering and modal details
+ * @returns {JSX.Element}
+ */
 const Ecology = () => {
+  // ============================================================================
+  // State Management
+  // ============================================================================
+  
+  // Selected species for modal display
   const [selectedItem, setSelectedItem] = useState(null);
+  // Current category filter (All, Flora, Fauna, Fungi)
   const [categoryFilter, setCategoryFilter] = useState('All');
+  // Client-side flag for portal rendering (SSR safety)
   const [isClient, setIsClient] = useState(false);
+  // Store scroll position before opening modal to restore after close
   const scrollPositionRef = useRef(0);
 
-  // 🔊 AUDIO STATE & REFS FOR HEADER
+  // Text-to-speech state and refs
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [alertMessage, setAlertMessage] = useState(null);
   const synthesizerRef = useRef(null);
   const playerRef = useRef(null);
 
+  // ============================================================================
+  // Computed Values (Memoized)
+  // ============================================================================
+  
+  // Extract category keys from data once
   const categoryKeys = useMemo(
     () => Object.keys(ecologyData.species_by_category),
     []
   );
 
+  // Build category options with "All" option first
   const categoryOptions = useMemo(
     () => ['All', ...categoryKeys.map(formatCategoryLabel)],
     [categoryKeys],
   );
 
+  // Build species list once from data
   const allSpecies = useMemo(() => buildSpeciesList(), []);
 
+  // Filter and sort species based on selected category
+  // Memoized to avoid recalculation on every render
   const filteredData = useMemo(
     () =>
       allSpecies
@@ -105,12 +174,23 @@ const Ecology = () => {
     [allSpecies, categoryFilter],
   );
 
-  // Set client flag for portal
+  // ============================================================================
+  // Side Effects
+  // ============================================================================
+  
+  /**
+   * Set client flag for portal rendering
+   * Portals require DOM, so only render on client side (SSR safety)
+   */
   useEffect(() => {
     setIsClient(true);
-  }, []);
+  }, []); // Run once on mount
 
-  // Lock body scroll when modal open
+  /**
+   * Lock body scroll when modal is open
+   * Prevents background scrolling while modal is displayed
+   * Stores scroll position to restore after modal closes
+   */
   useEffect(() => {
     if (selectedItem) {
       scrollPositionRef.current = window.scrollY;
@@ -131,65 +211,116 @@ const Ecology = () => {
         window.scrollTo(0, storedScroll);
       };
     }
-  }, [selectedItem]);
+  }, [selectedItem]); // Re-run when modal opens/closes
 
-  // 🔊 Setup Azure Text-to-Speech for header
+  /**
+   * Initialize Azure Speech SDK for header narration
+   * Only initializes if API keys are present
+   */
   useEffect(() => {
-    const speechKey = import.meta.env.VITE_AZURE_SPEECH_KEY;
-    const speechRegion = import.meta.env.VITE_AZURE_REGION;
+    try {
+      const speechKey = import.meta.env.VITE_AZURE_SPEECH_KEY;
+      const speechRegion = import.meta.env.VITE_AZURE_REGION;
 
-    if (!speechKey || !speechRegion) {
-      console.warn("Azure Speech key/region are missing in .env");
-      return;
+      if (!speechKey || !speechRegion) {
+        return;
+      }
+
+      const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+        speechKey,
+        speechRegion
+      );
+      speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
+
+      const player = new SpeechSDK.SpeakerAudioDestination();
+      const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(player);
+
+      const synthesizer = new SpeechSDK.SpeechSynthesizer(
+        speechConfig,
+        audioConfig
+      );
+
+      synthesizerRef.current = synthesizer;
+      playerRef.current = player;
+    } catch (error) {
+      console.error("Failed to initialize Azure Speech:", error);
     }
-
-    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-      speechKey,
-      speechRegion
-    );
-    speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
-
-    const player = new SpeechSDK.SpeakerAudioDestination();
-    const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(player);
-
-    const synthesizer = new SpeechSDK.SpeechSynthesizer(
-      speechConfig,
-      audioConfig
-    );
-
-    synthesizerRef.current = synthesizer;
-    playerRef.current = player;
 
     return () => {
       if (synthesizerRef.current) synthesizerRef.current.close();
       synthesizerRef.current = null;
       playerRef.current = null;
     };
-  }, []);
+  }, []); // Initialize once on mount
 
+  // ============================================================================
+  // Event Handlers
+  // ============================================================================
+  
+  /**
+   * Play header audio narration with error handling
+   * Displays alert if API keys are missing or initialization failed
+   */
   const playHeaderAudio = () => {
-    const synthesizer = synthesizerRef.current;
-    const player = playerRef.current;
-    if (!synthesizer) return;
+    try {
+      const speechKey = import.meta.env.VITE_AZURE_SPEECH_KEY;
+      const speechRegion = import.meta.env.VITE_AZURE_REGION;
 
-    const text =
-      "Species you may encounter. " +
-      "Explore the flora, fauna, and fungi of Saint Margaret's Bay. " +
-      "Use the filter below to focus on a category, then open a card to view the reference photo.";
-
-    if (player) {
-      player.resume();
-    }
-
-    setIsSpeaking(true);
-    synthesizer.speakTextAsync(
-      text,
-      () => setIsSpeaking(false),
-      (err) => {
-        console.error("Speech error:", err);
-        setIsSpeaking(false);
+      // ============================================================================
+      // TODO: REMOVE THIS SECTION ONCE API KEYS ARE CONFIGURED
+      // This alert check can be removed after VITE_AZURE_SPEECH_KEY and VITE_AZURE_REGION
+      // are properly set in environment variables (Netlify/Azure dashboard or .env file)
+      // ============================================================================
+      // Check if keys are missing or contain placeholder values
+      const hasPlaceholderKeys = !speechKey || !speechRegion || 
+        speechKey.toLowerCase().includes('keyhere') || 
+        speechKey.toLowerCase().includes('your_azure') ||
+        speechRegion.toLowerCase().includes('regionhere') ||
+        speechRegion.toLowerCase().includes('your_azure');
+      
+      if (hasPlaceholderKeys) {
+        setAlertMessage("Azure Speech API keys are missing or invalid. Please update VITE_AZURE_SPEECH_KEY and VITE_AZURE_REGION with valid keys in your environment variables (Netlify/Azure dashboard) or .env file for local development.");
+        setTimeout(() => setAlertMessage(null), 10000);
+        return;
       }
-    );
+      // ============================================================================
+      // END OF SECTION TO REMOVE ONCE API KEYS ARE CONFIGURED
+      // ============================================================================
+
+      const synthesizer = synthesizerRef.current;
+      const player = playerRef.current;
+      if (!synthesizer) {
+        setAlertMessage("Text-to-speech is not initialized. Please configure Azure API keys and refresh the page.");
+        setTimeout(() => setAlertMessage(null), 8000);
+        return;
+      }
+
+      const text =
+        "Species you may encounter. " +
+        "Explore the flora, fauna, and fungi of Saint Margaret's Bay. " +
+        "Use the filter below to focus on a category, then open a card to view the reference photo.";
+
+      if (player) {
+        player.resume();
+      }
+
+      setIsSpeaking(true);
+      synthesizer.speakTextAsync(
+        text,
+        () => setIsSpeaking(false),
+        (err) => {
+          console.error("Speech error:", err);
+          // Show alert immediately when WebSocket/API error occurs
+          setAlertMessage("Failed to play audio. Your Azure Speech API keys may be invalid or missing. Please update VITE_AZURE_SPEECH_KEY and VITE_AZURE_REGION with valid keys in your environment variables (Netlify/Azure dashboard) or .env file.");
+          setTimeout(() => setAlertMessage(null), 10000);
+          setIsSpeaking(false);
+        }
+      );
+    } catch (error) {
+      console.error("Error playing audio:", error);
+      setAlertMessage("An error occurred while trying to play audio. Please update your Azure Speech API keys.");
+      setTimeout(() => setAlertMessage(null), 8000);
+    }
   };
 
   const stopHeaderAudio = () => {
@@ -202,6 +333,10 @@ const Ecology = () => {
     setIsSpeaking(false);
   };
 
+  /**
+   * Close species detail modal
+   * Scroll position is restored by useEffect cleanup
+   */
   const closeModal = () => setSelectedItem(null);
 
   const glassPanel =
@@ -222,22 +357,45 @@ const Ecology = () => {
             focus on a category, then open a card to view the reference photo.
           </p>
 
-          <div className="flex gap-3 mt-4">
-            <button
-              type="button"
-              onClick={playHeaderAudio}
-              className="px-4 py-2 rounded-full bg-emerald-600 text-white text-sm font-medium shadow hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-            >
-              Play Audio
-            </button>
+          {/* Alert message - shows when API keys are missing or invalid */}
+          {alertMessage && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border-2 border-amber-500/70 bg-amber-50/95 p-4 text-sm text-amber-900 shadow-lg dark:border-amber-400/70 dark:bg-amber-900/95 dark:text-amber-100 z-50">
+              <IoWarningOutline className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1">
+                <p className="font-semibold text-base">Azure API Keys Required</p>
+                <p className="mt-1.5 text-sm">{alertMessage}</p>
+                <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                  Configure in Netlify/Azure environment variables or create a <code className="rounded bg-amber-200/60 px-1.5 py-0.5 dark:bg-amber-800/60">.env</code> file for local development.
+                </p>
+              </div>
+              <button
+                onClick={() => setAlertMessage(null)}
+                className="flex-shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100 transition-colors"
+                aria-label="Dismiss"
+              >
+                <IoClose className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+          
+          <div className="space-y-2 mt-4">
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={playHeaderAudio}
+                className="px-4 py-2 rounded-full bg-emerald-600 text-white text-sm font-medium shadow hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              >
+                Play Audio
+              </button>
 
-            <button
-              type="button"
-              onClick={stopHeaderAudio}
-              className="px-4 py-2 rounded-full bg-red-600 text-white text-sm font-medium shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-            >
-              Stop Audio
-            </button>
+              <button
+                type="button"
+                onClick={stopHeaderAudio}
+                className="px-4 py-2 rounded-full bg-red-600 text-white text-sm font-medium shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              >
+                Stop Audio
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -432,6 +590,16 @@ const Ecology = () => {
             document.body,
           )
         : null}
+
+      {/* Source Attribution */}
+      <section className={`${glassPanel} p-6`}>
+        <div className="border-t border-slate-300/50 pt-4 dark:border-slate-600/50">
+          <p className="text-xs text-slate-600 dark:text-slate-400">
+            <strong className="text-slate-700 dark:text-slate-300">Source:</strong> Natural History of the French Village Conservation Woodland. A Report to the French Village Conservation Woodland Committee by David Patriquin, Jess Lewis, Livy Fraser, Liam Holwell, Rohan Kariyawansa. Nov. 2021
+          </p>
+        </div>
+      </section>
+
       <Footer />
     </div>
   );

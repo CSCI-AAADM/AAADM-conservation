@@ -1,15 +1,30 @@
-// Purpose: To display the Homepage (landing page) of the Woodland Conservation website
+/**
+ * ================================================================================
+ * File: Homepage.jsx
+ * Author: ADM (Abhishek Darsh Manar) 2025 Fall - Software Engineering (CSCI-3428-1)
+ * Description: Landing page component displaying hero section, core features,
+ * and trail information with integrated Azure text-to-speech functionality.
+ * ================================================================================
+ */
+
 import React, { useState, useEffect, useRef } from "react";
 import bannerImage from "../assets/homepage-banner.jpg";
 import { Link } from "react-router-dom";
 import { FaTree, FaCamera, FaMapMarkedAlt } from "react-icons/fa";
 import { BsArrowRightCircle, BsArrowUpRight } from "react-icons/bs";
+import { IoClose, IoWarningOutline } from "react-icons/io5";
 import Footer from "./Footer";
 import * as SpeechSDK from "microsoft-cognitiveservices-speech-sdk";
 
+// ============================================================================
+// Constants & Configuration
+// ============================================================================
+
+// Reusable glass morphism styling for consistent panel appearance
 const glassPanel =
   "rounded-[28px] border border-white/40 bg-white/40 p-6 shadow-lg shadow-slate-900/10 backdrop-blur-2xl backdrop-saturate-150 transition-colors duration-300 dark:border-slate-500/40 dark:bg-slate-900/40 dark:shadow-black/25";
 
+// Core feature tiles displayed on homepage
 const coreTiles = [
   {
     icon: <FaTree className="text-emerald-500 text-3xl" />,
@@ -34,38 +49,67 @@ const coreTiles = [
   },
 ];
 
+// ============================================================================
+// Homepage Component
+// ============================================================================
+
+/**
+ * Homepage Component - Main landing page with hero section and feature tiles
+ * @returns {JSX.Element}
+ */
 const Homepage = () => {
-  // ---- TEXT TO SPEECH (Azure) FOR HERO SECTION ----
+  // ============================================================================
+  // State Management
+  // ============================================================================
+  
+  // Track text-to-speech playback state
   const [isSpeaking, setIsSpeaking] = useState(false);
+  // Store alert message for API key configuration errors
+  const [alertMessage, setAlertMessage] = useState(null);
+  // Refs to maintain Azure Speech SDK instances across renders
   const synthesizerRef = useRef(null);
   const playerRef = useRef(null);
 
+  // ============================================================================
+  // Azure Text-to-Speech Initialization
+  // ============================================================================
+  
+  /**
+   * Initialize Azure Speech SDK on component mount
+   * Only initializes if API keys are present in environment variables
+   * Empty dependency array ensures this runs once on mount
+   */
   useEffect(() => {
-    const speechKey = import.meta.env.VITE_AZURE_SPEECH_KEY;
-    const speechRegion = import.meta.env.VITE_AZURE_REGION;
+    try {
+      const speechKey = import.meta.env.VITE_AZURE_SPEECH_KEY;
+      const speechRegion = import.meta.env.VITE_AZURE_REGION;
 
-    if (!speechKey || !speechRegion) {
-      console.warn("Azure Speech key/region are missing in .env");
-      return;
+      // Silently fail if keys are missing - error will show when user clicks play
+      if (!speechKey || !speechRegion) {
+        return;
+      }
+
+      const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
+        speechKey,
+        speechRegion
+      );
+      speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural";
+
+      const player = new SpeechSDK.SpeakerAudioDestination();
+      const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(player);
+
+      const synthesizer = new SpeechSDK.SpeechSynthesizer(
+        speechConfig,
+        audioConfig
+      );
+
+      synthesizerRef.current = synthesizer;
+      playerRef.current = player;
+    } catch (error) {
+      console.error("Failed to initialize Azure Speech:", error);
     }
 
-    const speechConfig = SpeechSDK.SpeechConfig.fromSubscription(
-      speechKey,
-      speechRegion
-    );
-    speechConfig.speechSynthesisVoiceName = "en-US-JennyNeural"; // choose your neural voice
-
-    const player = new SpeechSDK.SpeakerAudioDestination();
-    const audioConfig = SpeechSDK.AudioConfig.fromSpeakerOutput(player);
-
-    const synthesizer = new SpeechSDK.SpeechSynthesizer(
-      speechConfig,
-      audioConfig
-    );
-
-    synthesizerRef.current = synthesizer;
-    playerRef.current = player;
-
+    // Cleanup: Close synthesizer to prevent memory leaks on unmount
     return () => {
       if (synthesizerRef.current) {
         synthesizerRef.current.close();
@@ -73,37 +117,90 @@ const Homepage = () => {
       synthesizerRef.current = null;
       playerRef.current = null;
     };
-  }, []);
+  }, []); // Empty array: initialize once on mount
 
+  // ============================================================================
+  // Event Handlers
+  // ============================================================================
+  
+  /**
+   * Play hero section audio narration using Azure Speech SDK
+   * Displays alert if API keys are missing or initialization failed
+   */
   const playHeroAudio = () => {
-    const synthesizer = synthesizerRef.current;
-    const player = playerRef.current;
-    if (!synthesizer) return;
+    try {
+      const speechKey = import.meta.env.VITE_AZURE_SPEECH_KEY;
+      const speechRegion = import.meta.env.VITE_AZURE_REGION;
 
-    const text =
-      "Saint Margaret's Bay Area Woodland. " +
-      "A community forest that keeps local history and coastal birch standing strong. " +
-      "Welcome to the French Village Conservation Woodland at seventy one Saint Pauls Lane—twenty-seven acres of protected forest and wetlands. " +
-      "Walk the one-way trail to eight simple stops, from the exercise bar to the labyrinth. " +
-      "Discover community stories along the way, and return the same route as the forest soundtrack changes around you.";
-
-    if (player) {
-      player.resume();
-    }
-
-    setIsSpeaking(true);
-    synthesizer.speakTextAsync(
-      text,
-      () => {
-        setIsSpeaking(false);
-      },
-      (err) => {
-        console.error("Speech error:", err);
-        setIsSpeaking(false);
+      // ============================================================================
+      // TODO: REMOVE THIS SECTION ONCE API KEYS ARE CONFIGURED
+      // This alert check can be removed after VITE_AZURE_SPEECH_KEY and VITE_AZURE_REGION
+      // are properly set in environment variables (Netlify/Azure dashboard or .env file)
+      // ============================================================================
+      // Check if keys are missing or contain placeholder values
+      const hasPlaceholderKeys = !speechKey || !speechRegion || 
+        speechKey.toLowerCase().includes('keyhere') || 
+        speechKey.toLowerCase().includes('your_azure') ||
+        speechRegion.toLowerCase().includes('regionhere') ||
+        speechRegion.toLowerCase().includes('your_azure');
+      
+      if (hasPlaceholderKeys) {
+        setAlertMessage("Azure Speech API keys are missing or invalid. Please update VITE_AZURE_SPEECH_KEY and VITE_AZURE_REGION with valid keys in your environment variables (Netlify/Azure dashboard) or .env file for local development.");
+        // Auto-dismiss alert after 10 seconds to give user time to read
+        setTimeout(() => setAlertMessage(null), 10000);
+        return;
       }
-    );
+      // ============================================================================
+      // END OF SECTION TO REMOVE ONCE API KEYS ARE CONFIGURED
+      // ============================================================================
+
+      const synthesizer = synthesizerRef.current;
+      const player = playerRef.current;
+      // Verify synthesizer was initialized successfully
+      if (!synthesizer) {
+        setAlertMessage("Text-to-speech is not initialized. Please configure Azure API keys and refresh the page.");
+        setTimeout(() => setAlertMessage(null), 8000);
+        return;
+      }
+
+      const text =
+        "Saint Margaret's Bay Area Woodland. " +
+        "A community forest that keeps local history and coastal birch standing strong. " +
+        "Welcome to the French Village Conservation Woodland at seventy one Saint Pauls Lane—twenty-seven acres of protected forest and wetlands. " +
+        "Walk the one-way trail to eight simple stops, from the exercise bar to the labyrinth. " +
+        "Discover community stories along the way, and return the same route as the forest soundtrack changes around you.";
+
+      // Resume player if it was previously paused
+      if (player) {
+        player.resume();
+      }
+
+      setIsSpeaking(true);
+      // Async speech synthesis with success and error callbacks
+      synthesizer.speakTextAsync(
+        text,
+        () => {
+          setIsSpeaking(false);
+        },
+        (err) => {
+          console.error("Speech error:", err);
+          // Show alert immediately when WebSocket/API error occurs
+          setAlertMessage("Failed to play audio. Your Azure Speech API keys may be invalid or missing. Please update VITE_AZURE_SPEECH_KEY and VITE_AZURE_REGION with valid keys in your environment variables (Netlify/Azure dashboard) or .env file.");
+          setTimeout(() => setAlertMessage(null), 10000);
+          setIsSpeaking(false);
+        }
+      );
+    } catch (error) {
+      console.error("Error playing audio:", error);
+      setAlertMessage("An error occurred while trying to play audio. Please update your Azure Speech API keys.");
+      setTimeout(() => setAlertMessage(null), 8000);
+    }
   };
 
+  /**
+   * Stop audio playback immediately by pausing player
+   * Player pause provides instant stop vs waiting for synthesizer to finish
+   */
   const stopHeroAudio = () => {
     const player = playerRef.current;
 
@@ -113,8 +210,11 @@ const Homepage = () => {
 
     setIsSpeaking(false);
   };
-  // ---- END TEXT TO SPEECH ----
 
+  // ============================================================================
+  // Render
+  // ============================================================================
+  
   return (
     <div className="flex flex-col gap-8 text-slate-800 dark:text-slate-100">
       <header className={`${glassPanel} flex flex-col gap-5 md:flex-row md:items-center md:justify-between`}>
@@ -131,23 +231,45 @@ const Homepage = () => {
             the way, and return the same route as the forest soundtrack changes around you.
           </p>
 
-          {/* AUDIO BUTTONS FOR HERO SECTION */}
-          <div className="flex flex-wrap gap-3 pt-1">
-            <button
-              type="button"
-              onClick={playHeroAudio}
-              className="inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold bg-emerald-600 text-white shadow hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-            >
-              Play Audio
-            </button>
+          {/* Audio controls with inline error alerts */}
+          <div className="space-y-2 pt-1">
+            {/* Display alert when API keys are missing or errors occur */}
+            {alertMessage && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-400/50 bg-amber-50/90 p-3 text-xs text-amber-800 dark:border-amber-500/50 dark:bg-amber-900/90 dark:text-amber-200">
+                <IoWarningOutline className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">Azure API Keys Required</p>
+                  <p className="mt-1">{alertMessage}</p>
+                  <p className="mt-2 text-xs">
+                    Configure in Netlify/Azure environment variables or create a <code className="rounded bg-amber-200/50 px-1 dark:bg-amber-800/50">.env</code> file for local development.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setAlertMessage(null)}
+                  className="flex-shrink-0 text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200"
+                  aria-label="Dismiss"
+                >
+                  <IoClose className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={playHeroAudio}
+                className="inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold bg-emerald-600 text-white shadow hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              >
+                Play Audio
+              </button>
 
-            <button
-              type="button"
-              onClick={stopHeroAudio}
-              className="inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold bg-red-600 text-white shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-            >
-              Stop Audio
-            </button>
+              <button
+                type="button"
+                onClick={stopHeroAudio}
+                className="inline-flex items-center rounded-full px-4 py-2 text-xs font-semibold bg-red-600 text-white shadow hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
+              >
+                Stop Audio
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3 pt-3">
